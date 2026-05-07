@@ -1,0 +1,105 @@
+const fs = require('fs');
+const path = require('path');
+
+function parseShakespearePlays(baseDir) {
+    const plays = [];
+    
+    const playFolders = [
+        'hamlet', 'othello', 'macbeth', 'lear', 'romeo_juliet', 'julius_caesar',
+        'cleopatra', 'coriolanus', 'timon', 'titus', 'troilus', 'cymbeline',
+        'henryiv', 'henryv', 'henryvi', 'henryviii', 'john', 'richardii',
+        'richardiii', 'allswell', 'asyoulikeit', 'comedy_errors', 'loves_labours',
+        'measure', 'merchant', 'merry_wives', 'midsummer', 'much_ado', 'pericles',
+        'taming_shrew', 'tempest', 'twelfth_night', 'two_gentlemen', 'winters_tale'
+    ];
+    
+    for (const playName of playFolders) {
+        const playPath = path.join(baseDir, playName);
+        if (!fs.existsSync(playPath)) continue;
+        
+        const playData = {
+            title: playName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            acts: []
+        };
+        
+        const files = fs.readdirSync(playPath).filter(f => f.endsWith('.html'));
+        
+        for (const file of files) {
+            const match = file.match(/(\d+)\.(\d+)\.html/);
+            if (!match) continue;
+            
+            const actNum = parseInt(match[1]);
+            const sceneNum = parseInt(match[2]);
+            
+            let act = playData.acts.find(a => a.act === actNum);
+            if (!act) {
+                act = { act: actNum, scenes: [] };
+                playData.acts.push(act);
+            }
+            
+            let scene = act.scenes.find(s => s.scene === sceneNum);
+            if (!scene) {
+                scene = { scene: sceneNum, lines: [] };
+                act.scenes.push(scene);
+            }
+            
+            const html = fs.readFileSync(path.join(playPath, file), 'utf8');
+            const lines = extractLinesFromHTML(html);
+            scene.lines = lines;
+        }
+        
+        playData.acts.sort((a, b) => a.act - b.act);
+        for (const act of playData.acts) {
+            act.scenes.sort((a, b) => a.scene - b.scene);
+        }
+        
+        if (playData.acts.length > 0) {
+            plays.push(playData);
+        }
+    }
+    
+    return plays;
+}
+
+function extractLinesFromHTML(html) {
+    const lines = [];
+    const speakerRegex = /<A NAME=speech\d+><b>([A-Z][A-Z\s]*)<\/b>/g;
+    
+    const blocks = html.split(/<A NAME=speech\d+><b>|<\/b>/);
+    
+    for (let i = 1; i < blocks.length; i += 2) {
+        if (i+1 < blocks.length) {
+            const speaker = blocks[i].trim();
+            if (speaker && !speaker.includes('<')) {
+                let textBlock = blocks[i+1];
+                const textMatch = textBlock.match(/<A NAME=\d+>(.*?)<\/A>/s);
+                if (textMatch) {
+                    let text = textMatch[1]
+                        .replace(/<br>/g, ' ')
+                        .replace(/<[^>]*>/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    
+                    if (text && speaker !== 'A') {
+                        lines.push({
+                            speaker: speaker,
+                            text: text
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    return lines;
+}
+
+const baseDir = process.argv[2] || '.';
+console.log(`Парсинг пьес из: ${baseDir}`);
+
+const plays = parseShakespearePlays(baseDir);
+console.log(`Найдено пьес: ${plays.length}`);
+
+const outputFile = 'shakespeare_plays.json';
+fs.writeFileSync(outputFile, JSON.stringify(plays, null, 2));
+console.log(`Сохранено в: ${outputFile}`);
