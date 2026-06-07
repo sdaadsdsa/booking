@@ -2,9 +2,11 @@
 using Microsoft.Extensions.FileProviders;
 using BookingSystemAPI.Data;
 using BookingSystemAPI.Models;
+using BookingSystemAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Добавляем сервисы
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -24,6 +26,9 @@ builder.Services.AddCors(options =>
 // Подключение к БД
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Регистрация сервисов - ВОТ ЗДЕСЬ нужно добавить!
+builder.Services.AddScoped<IEmailService, EmailService>(); // Исправь IEmaillService на IEmailService
 
 // Добавляем логирование
 builder.Services.AddLogging();
@@ -47,7 +52,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors("AllowAll"); // Включаем CORS
+app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
 
@@ -66,7 +71,6 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("✅ Успешно подключено к БД 'sites'");
 
-            // Проверяем существование администратора
             var adminExists = await db.Admins.AnyAsync();
             if (!adminExists)
             {
@@ -84,6 +88,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Создание администратора
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -91,7 +96,6 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        // Проверяем и создаем администратора admin1
         var existingAdmin = await db.Admins.FirstOrDefaultAsync(a => a.Username == "admin1");
 
         if (existingAdmin == null)
@@ -114,13 +118,11 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✅ Администратор admin1 создан!");
             logger.LogInformation($"   Логин: admin1");
             logger.LogInformation($"   Пароль: admin123");
-            logger.LogInformation($"   Хеш: {admin.PasswordHash}");
         }
         else
         {
             logger.LogInformation($"Найден администратор: {existingAdmin.Username}");
 
-            // Проверяем и обновляем пароль если нужно
             try
             {
                 bool isValid = BCrypt.Net.BCrypt.Verify("admin123", existingAdmin.PasswordHash);
@@ -132,7 +134,6 @@ using (var scope = app.Services.CreateScope())
                     existingAdmin.PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123", 12);
                     await db.SaveChangesAsync();
                     logger.LogInformation("   ✅ Пароль обновлен!");
-                    logger.LogInformation($"   Новый хеш: {existingAdmin.PasswordHash}");
                 }
             }
             catch (Exception hashEx)
@@ -150,4 +151,5 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "Ошибка при работе с администратором");
     }
 }
+
 app.Run();
